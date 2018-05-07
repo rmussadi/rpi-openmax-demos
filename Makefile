@@ -11,6 +11,8 @@ all: $(PROGRAMS)
 
 rpi-camera-dump-yuv: rpi-camera-dump-yuv.c rpi-omx-utils.c rpi-i420-framing.c
 
+rpi-encode-yuv: rpi-encode-yuv.c rpi-omx-utils.c rpi-i420-framing.c
+
 clean:
 	rm -f $(PROGRAMS)
 
