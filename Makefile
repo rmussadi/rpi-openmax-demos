@@ -9,6 +9,8 @@ LDFLAGS  = -L/opt/vc/lib -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -pthread
 
 all: $(PROGRAMS)
 
+rpi-camera-dump-yuv: rpi-camera-dump-yuv.c rpi-omx-utils.c rpi-i420-framing.c
+
 clean:
 	rm -f $(PROGRAMS)
 
