@@ -18,3 +18,6 @@
 #define CAM_IMAGE_FILTER                OMX_ImageFilterNoise    // OMX_IMAGEFILTERTYPE
 #define CAM_FLIP_HORIZONTAL             OMX_FALSE
 #define CAM_FLIP_VERTICAL               OMX_FALSE
+
+
+extern void config_omx_camera(OMX_U32 cam_width, OMX_U32 cam_height, OMX_U32 cam_framerate);
