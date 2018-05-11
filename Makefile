@@ -15,6 +15,8 @@ rpi-encode-yuv: rpi-encode-yuv.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-conf
 
 rpi-camera-encode: rpi-camera-encode.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
 
+rpi-camera-playback: rpi-camera-playback.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
+
 clean:
 	rm -f $(PROGRAMS)
 
