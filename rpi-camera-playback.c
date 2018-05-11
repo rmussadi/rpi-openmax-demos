@@ -68,7 +68,6 @@ typedef struct
     // stdin/out
     //FILE *fd_in;
     //FILE *fd_out;
-
   
 } appctx;
 
