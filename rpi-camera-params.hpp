@@ -19,5 +19,13 @@
 #define CAM_FLIP_HORIZONTAL             OMX_FALSE
 #define CAM_FLIP_VERTICAL               OMX_FALSE
 
+typedef struct
+{
+    OMX_HANDLETYPE camera;
+    OMX_BUFFERHEADERTYPE *camera_ppBuffer_in;
+    OMX_BUFFERHEADERTYPE *camera_ppBuffer_out;
+    int camera_ready;
+    int camera_output_buffer_available;
+} OmxCameraModule;
 
-extern void config_omx_camera(OMX_U32 cam_width, OMX_U32 cam_height, OMX_U32 cam_framerate);
+extern void config_omx_camera(OmxCameraModule *cammodule, OMX_U32 cam_width, OMX_U32 cam_height, OMX_U32 cam_framerate);
