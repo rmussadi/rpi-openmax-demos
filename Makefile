@@ -9,13 +9,13 @@ LDFLAGS  = -L/opt/vc/lib -lopenmaxil -lbcm_host -lvcos -lvchiq_arm -pthread
 
 all: $(PROGRAMS)
 
-rpi-camera-dump-yuv: rpi-camera-dump-yuv.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
+#rpi-camera-dump-yuv: rpi-camera-dump-yuv.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
 
-rpi-encode-yuv: rpi-encode-yuv.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
+#rpi-encode-yuv: rpi-encode-yuv.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
 
-rpi-camera-encode: rpi-camera-encode.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
+rpi-camera-encode: rpi-camera-encode.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c rpi-omx-config-encoder.c
 
-rpi-camera-playback: rpi-camera-playback.c rpi-omx-utils.c rpi-i420-framing.c rpi-omx-config-camera.c
+rpi-camera-playback:  rpi-camera-playback.c rpi-i420-framing.c  rpi-omx-utils.c rpi-omx-config-camera.c
 
 clean:
 	rm -f $(PROGRAMS)
