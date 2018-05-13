@@ -42,23 +42,7 @@ static int want_quit = 0;
 typedef struct
 {
     appctx_sync sync_ ;
-
-    // camera module
-    OMX_HANDLETYPE camera;
-    OMX_BUFFERHEADERTYPE *camera_ppBuffer_in;
-    OMX_BUFFERHEADERTYPE *camera_ppBuffer_out;
-    int camera_ready;
-    int camera_output_buffer_available;
-
-    // display module
-    //OMX_HANDLETYPE render;
-
-    // encoder module
-    //OMX_HANDLETYPE encoder;
-    //OMX_BUFFERHEADERTYPE *encoder_ppBuffer_in;
-    //OMX_BUFFERHEADERTYPE *encoder_ppBuffer_out;
-    //int encoder_input_buffer_needed;
-    //int encoder_output_buffer_available;
+    OmxCameraModule cammodule_;
 
     // null_sink module
     OMX_HANDLETYPE null_sink;
@@ -98,7 +82,7 @@ static OMX_ERRORTYPE event_handler(
         case OMX_EventParamOrConfigChanged:
             vcos_semaphore_wait(&ctx->sync_.handler_lock);
             if(nData2 == OMX_IndexParamCameraDeviceNumber) {
-                ctx->camera_ready = 1;
+                ctx->cammodule_.camera_ready = 1;
             }
             vcos_semaphore_post(&ctx->sync_.handler_lock);
             break;
@@ -121,7 +105,7 @@ static OMX_ERRORTYPE fill_output_buffer_done_handler(
     appctx *ctx = ((appctx*)pAppData);
     vcos_semaphore_wait(&ctx->sync_.handler_lock);
     // The main loop can now flush the buffer to output file
-    ctx->camera_output_buffer_available = 1;
+    ctx->cammodule_.camera_output_buffer_available = 1;
     vcos_semaphore_post(&ctx->sync_.handler_lock);
     return OMX_ErrorNone;
 }
@@ -144,168 +128,16 @@ int main(int argc, char **argv) {
 
     // Init component handles
     OMX_CALLBACKTYPE callbacks;
-    memset(&ctx, 0, sizeof(callbacks));
+    memset(&callbacks, 0, sizeof(callbacks));
     callbacks.EventHandler   = event_handler;
     callbacks.FillBufferDone = fill_output_buffer_done_handler;
 
-    init_component_handle("camera", &ctx.camera , &ctx, &callbacks);
+    init_component_handle("camera", &ctx.cammodule_.camera , &ctx, &callbacks);
     init_component_handle("null_sink", &ctx.null_sink, &ctx, &callbacks);
 
     say("Configuring camera...");
-
-    say("Default port definition for camera input port 73");
-    dump_port(ctx.camera, 73, OMX_TRUE);
-    say("Default port definition for camera preview output port 70");
-    dump_port(ctx.camera, 70, OMX_TRUE);
-    say("Default port definition for camera video output port 71");
-    dump_port(ctx.camera, 71, OMX_TRUE);
-
-    // Request a callback to be made when OMX_IndexParamCameraDeviceNumber is
-    // changed signaling that the camera device is ready for use.
-    OMX_CONFIG_REQUESTCALLBACKTYPE cbtype;
-    OMX_INIT_STRUCTURE(cbtype);
-    cbtype.nPortIndex = OMX_ALL;
-    cbtype.nIndex     = OMX_IndexParamCameraDeviceNumber;
-    cbtype.bEnable    = OMX_TRUE;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigRequestCallback, &cbtype)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to request camera device number parameter change callback for camera");
-    }
-    // Set device number, this triggers the callback configured just above
-    OMX_PARAM_U32TYPE device;
-    OMX_INIT_STRUCTURE(device);
-    device.nPortIndex = OMX_ALL;
-    device.nU32 = CAM_DEVICE_NUMBER;
-    if((r = OMX_SetParameter(ctx.camera, OMX_IndexParamCameraDeviceNumber, &device)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera parameter device number");
-    }
-    // Configure video format emitted by camera preview output port
-    OMX_PARAM_PORTDEFINITIONTYPE camera_portdef;
-    OMX_INIT_STRUCTURE(camera_portdef);
-    camera_portdef.nPortIndex = 70;
-    if((r = OMX_GetParameter(ctx.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to get port definition for camera preview output port 70");
-    }
-    camera_portdef.format.video.nFrameWidth  = VIDEO_WIDTH;
-    camera_portdef.format.video.nFrameHeight = VIDEO_HEIGHT;
-    camera_portdef.format.video.xFramerate   = VIDEO_FRAMERATE << 16;
-    // Stolen from gstomxvideodec.c of gst-omx
-    camera_portdef.format.video.nStride      = (camera_portdef.format.video.nFrameWidth + camera_portdef.nBufferAlignment - 1) & (~(camera_portdef.nBufferAlignment - 1));
-    camera_portdef.format.video.eColorFormat = OMX_COLOR_FormatYUV420PackedPlanar;
-    if((r = OMX_SetParameter(ctx.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set port definition for camera preview output port 70");
-    }
-    // Configure video format emitted by camera video output port
-    // Use configuration from camera preview output as basis for
-    // camera video output configuration
-    OMX_INIT_STRUCTURE(camera_portdef);
-    camera_portdef.nPortIndex = 70;
-    if((r = OMX_GetParameter(ctx.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to get port definition for camera preview output port 70");
-    }
-    camera_portdef.nPortIndex = 71;
-    if((r = OMX_SetParameter(ctx.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set port definition for camera video output port 71");
-    }
-    // Configure frame rate
-    OMX_CONFIG_FRAMERATETYPE framerate;
-    OMX_INIT_STRUCTURE(framerate);
-    framerate.nPortIndex = 70;
-    framerate.xEncodeFramerate = camera_portdef.format.video.xFramerate;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigVideoFramerate, &framerate)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set framerate configuration for camera preview output port 70");
-    }
-    framerate.nPortIndex = 71;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigVideoFramerate, &framerate)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set framerate configuration for camera video output port 71");
-    }
-    // Configure sharpness
-    OMX_CONFIG_SHARPNESSTYPE sharpness;
-    OMX_INIT_STRUCTURE(sharpness);
-    sharpness.nPortIndex = OMX_ALL;
-    sharpness.nSharpness = CAM_SHARPNESS;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonSharpness, &sharpness)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera sharpness configuration");
-    }
-    // Configure contrast
-    OMX_CONFIG_CONTRASTTYPE contrast;
-    OMX_INIT_STRUCTURE(contrast);
-    contrast.nPortIndex = OMX_ALL;
-    contrast.nContrast = CAM_CONTRAST;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonContrast, &contrast)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera contrast configuration");
-    }
-    // Configure saturation
-    OMX_CONFIG_SATURATIONTYPE saturation;
-    OMX_INIT_STRUCTURE(saturation);
-    saturation.nPortIndex = OMX_ALL;
-    saturation.nSaturation = CAM_SATURATION;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonSaturation, &saturation)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera saturation configuration");
-    }
-    // Configure brightness
-    OMX_CONFIG_BRIGHTNESSTYPE brightness;
-    OMX_INIT_STRUCTURE(brightness);
-    brightness.nPortIndex = OMX_ALL;
-    brightness.nBrightness = CAM_BRIGHTNESS;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonBrightness, &brightness)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera brightness configuration");
-    }
-    // Configure exposure value
-    OMX_CONFIG_EXPOSUREVALUETYPE exposure_value;
-    OMX_INIT_STRUCTURE(exposure_value);
-    exposure_value.nPortIndex = OMX_ALL;
-    exposure_value.xEVCompensation = CAM_EXPOSURE_VALUE_COMPENSTAION;
-    exposure_value.bAutoSensitivity = CAM_EXPOSURE_AUTO_SENSITIVITY;
-    exposure_value.nSensitivity = CAM_EXPOSURE_ISO_SENSITIVITY;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonExposureValue, &exposure_value)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera exposure value configuration");
-    }
-    // Configure frame frame stabilisation
-    OMX_CONFIG_FRAMESTABTYPE frame_stabilisation_control;
-    OMX_INIT_STRUCTURE(frame_stabilisation_control);
-    frame_stabilisation_control.nPortIndex = OMX_ALL;
-    frame_stabilisation_control.bStab = CAM_FRAME_STABILISATION;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonFrameStabilisation, &frame_stabilisation_control)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera frame frame stabilisation control configuration");
-    }
-    // Configure frame white balance control
-    OMX_CONFIG_WHITEBALCONTROLTYPE white_balance_control;
-    OMX_INIT_STRUCTURE(white_balance_control);
-    white_balance_control.nPortIndex = OMX_ALL;
-    white_balance_control.eWhiteBalControl = CAM_WHITE_BALANCE_CONTROL;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonWhiteBalance, &white_balance_control)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera frame white balance control configuration");
-    }
-    // Configure image filter
-    OMX_CONFIG_IMAGEFILTERTYPE image_filter;
-    OMX_INIT_STRUCTURE(image_filter);
-    image_filter.nPortIndex = OMX_ALL;
-    image_filter.eImageFilter = CAM_IMAGE_FILTER;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonImageFilter, &image_filter)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set camera image filter configuration");
-    }
-    // Configure mirror
-    OMX_MIRRORTYPE eMirror = OMX_MirrorNone;
-    if(CAM_FLIP_HORIZONTAL && !CAM_FLIP_VERTICAL) {
-        eMirror = OMX_MirrorHorizontal;
-    } else if(!CAM_FLIP_HORIZONTAL && CAM_FLIP_VERTICAL) {
-        eMirror = OMX_MirrorVertical;
-    } else if(CAM_FLIP_HORIZONTAL && CAM_FLIP_VERTICAL) {
-        eMirror = OMX_MirrorBoth;
-    }
-    OMX_CONFIG_MIRRORTYPE mirror;
-    OMX_INIT_STRUCTURE(mirror);
-    mirror.nPortIndex = 71;
-    mirror.eMirror = eMirror;
-    if((r = OMX_SetConfig(ctx.camera, OMX_IndexConfigCommonMirror, &mirror)) != OMX_ErrorNone) {
-        omx_die(r, "Failed to set mirror configuration for camera video output port 71");
-    }
-
-    // Ensure camera is ready
-    while(!ctx.camera_ready) {
-        usleep(10000);
-    }
-
+    config_omx_camera(&ctx.cammodule_, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FRAMERATE);
+ 
     say("Configuring null sink...");
 
     say("Default port definition for null sink input port 240");
@@ -315,16 +147,16 @@ int main(int argc, char **argv) {
 
     // Tunnel camera preview output port and null sink input port
     say("Setting up tunnel from camera preview output port 70 to null sink input port 240...");
-    if((r = OMX_SetupTunnel(ctx.camera, 70, ctx.null_sink, 240)) != OMX_ErrorNone) {
+    if((r = OMX_SetupTunnel(ctx.cammodule_.camera, 70, ctx.null_sink, 240)) != OMX_ErrorNone) {
         omx_die(r, "Failed to setup tunnel between camera preview output port 70 and null sink input port 240");
     }
 
     // Switch components to idle state
     say("Switching state of the camera component to idle...");
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandStateSet, OMX_StateIdle, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandStateSet, OMX_StateIdle, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the camera component to idle");
     }
-    block_until_state_changed(ctx.camera, OMX_StateIdle);
+    block_until_state_changed(ctx.cammodule_.camera, OMX_StateIdle);
     say("Switching state of the null sink component to idle...");
     if((r = OMX_SendCommand(ctx.null_sink, OMX_CommandStateSet, OMX_StateIdle, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the null sink component to idle");
@@ -333,18 +165,18 @@ int main(int argc, char **argv) {
 
     // Enable ports
     say("Enabling ports...");
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandPortEnable, 73, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandPortEnable, 73, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to enable camera input port 73");
     }
-    block_until_port_changed(ctx.camera, 73, OMX_TRUE);
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandPortEnable, 70, NULL)) != OMX_ErrorNone) {
+    block_until_port_changed(ctx.cammodule_.camera, 73, OMX_TRUE);
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandPortEnable, 70, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to enable camera preview output port 70");
     }
-    block_until_port_changed(ctx.camera, 70, OMX_TRUE);
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandPortEnable, 71, NULL)) != OMX_ErrorNone) {
+    block_until_port_changed(ctx.cammodule_.camera, 70, OMX_TRUE);
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandPortEnable, 71, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to enable camera video output port 71");
     }
-    block_until_port_changed(ctx.camera, 71, OMX_TRUE);
+    block_until_port_changed(ctx.cammodule_.camera, 71, OMX_TRUE);
     if((r = OMX_SendCommand(ctx.null_sink, OMX_CommandPortEnable, 240, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to enable null sink input port 240");
     }
@@ -353,19 +185,20 @@ int main(int argc, char **argv) {
     // Allocate camera input and video output buffers,
     // buffers for tunneled ports are allocated internally by OMX
     say("Allocating buffers...");
+    OMX_PARAM_PORTDEFINITIONTYPE camera_portdef;
     OMX_INIT_STRUCTURE(camera_portdef);
     camera_portdef.nPortIndex = 73;
-    if((r = OMX_GetParameter(ctx.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
+    if((r = OMX_GetParameter(ctx.cammodule_.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
         omx_die(r, "Failed to get port definition for camera input port 73");
     }
-    if((r = OMX_AllocateBuffer(ctx.camera, &ctx.camera_ppBuffer_in, 73, NULL, camera_portdef.nBufferSize)) != OMX_ErrorNone) {
+    if((r = OMX_AllocateBuffer(ctx.cammodule_.camera, &ctx.cammodule_.camera_ppBuffer_in, 73, NULL, camera_portdef.nBufferSize)) != OMX_ErrorNone) {
         omx_die(r, "Failed to allocate buffer for camera input port 73");
     }
     camera_portdef.nPortIndex = 71;
-    if((r = OMX_GetParameter(ctx.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
+    if((r = OMX_GetParameter(ctx.cammodule_.camera, OMX_IndexParamPortDefinition, &camera_portdef)) != OMX_ErrorNone) {
         omx_die(r, "Failed to get port definition for camera vіdeo output port 71");
     }
-    if((r = OMX_AllocateBuffer(ctx.camera, &ctx.camera_ppBuffer_out, 71, NULL, camera_portdef.nBufferSize)) != OMX_ErrorNone) {
+    if((r = OMX_AllocateBuffer(ctx.cammodule_.camera, &ctx.cammodule_.camera_ppBuffer_out, 71, NULL, camera_portdef.nBufferSize)) != OMX_ErrorNone) {
         omx_die(r, "Failed to allocate buffer for camera video output port 71");
     }
 
@@ -376,10 +209,10 @@ int main(int argc, char **argv) {
     // Switch state of the components prior to starting
     // the video capture loop
     say("Switching state of the camera component to executing...");
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandStateSet, OMX_StateExecuting, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandStateSet, OMX_StateExecuting, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the camera component to executing");
     }
-    block_until_state_changed(ctx.camera, OMX_StateExecuting);
+    block_until_state_changed(ctx.cammodule_.camera, OMX_StateExecuting);
     say("Switching state of the null sink component to executing...");
     if((r = OMX_SendCommand(ctx.null_sink, OMX_CommandStateSet, OMX_StateExecuting, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the null sink component to executing");
@@ -392,16 +225,16 @@ int main(int argc, char **argv) {
     OMX_INIT_STRUCTURE(capture);
     capture.nPortIndex = 71;
     capture.bEnabled = OMX_TRUE;
-    if((r = OMX_SetParameter(ctx.camera, OMX_IndexConfigPortCapturing, &capture)) != OMX_ErrorNone) {
+    if((r = OMX_SetParameter(ctx.cammodule_.camera, OMX_IndexConfigPortCapturing, &capture)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch on capture on camera video output port 71");
     }
 
     say("Configured port definition for camera input port 73");
-    dump_port(ctx.camera, 73, OMX_FALSE);
+    dump_port(ctx.cammodule_.camera, 73, OMX_FALSE);
     say("Configured port definition for camera preview output port 70");
-    dump_port(ctx.camera, 70, OMX_FALSE);
+    dump_port(ctx.cammodule_.camera, 70, OMX_FALSE);
     say("Configured port definition for camera video output port 71");
-    dump_port(ctx.camera, 71, OMX_FALSE);
+    dump_port(ctx.cammodule_.camera, 71, OMX_FALSE);
     say("Configured port definition for null sink input port 240");
     dump_port(ctx.null_sink, 240, OMX_FALSE);
 
@@ -441,7 +274,7 @@ int main(int argc, char **argv) {
     while(1) {
         // fill_output_buffer_done_handler() has marked that there's
         // a buffer for us to flush
-        if(ctx.camera_output_buffer_available) {
+        if(ctx.cammodule_.camera_output_buffer_available) {
             // Print a message if the user wants to quit, but don't exit
             // the loop until we are certain that we have processed
             // a full frame till end of the frame. This way we should always
@@ -450,24 +283,24 @@ int main(int argc, char **argv) {
             if(want_quit && !quit_detected) {
                 say("Exit signal detected, waiting for next frame boundry before exiting...");
                 quit_detected = 1;
-                quit_in_frame_boundry = ctx.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME;
+                quit_in_frame_boundry = ctx.cammodule_.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME;
             }
             if(quit_detected &&
                     (quit_in_frame_boundry ^
-                    (ctx.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME))) {
+                    (ctx.cammodule_.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME))) {
                 say("Frame boundry reached, exiting loop...");
                 break;
             }
             // Start of the OMX buffer data
-            buf_start = ctx.camera_ppBuffer_out->pBuffer
-                + ctx.camera_ppBuffer_out->nOffset;
+            buf_start = ctx.cammodule_.camera_ppBuffer_out->pBuffer
+                + ctx.cammodule_.camera_ppBuffer_out->nOffset;
             // Size of the OMX buffer data;
-            buf_size = ctx.camera_ppBuffer_out->nFilledLen;
+            buf_size = ctx.cammodule_.camera_ppBuffer_out->nFilledLen;
             buf_bytes_read += buf_size;
             buf_bytes_copied = 0;
             // Detect the possibly non-full buffer in the last buffer of a frame
             valid_spans_y = max_spans_y
-                - ((ctx.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME)
+                - ((ctx.cammodule_.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME)
                     ? frame_info.buf_extra_padding
                     : 0);
             // I420 spec: U and V plane span size half of the size of the Y plane span size
@@ -503,7 +336,7 @@ int main(int argc, char **argv) {
             buf_num++;
             say("Read %d bytes from buffer %d of frame %d, copied %d bytes from %d Y spans and %d U/V spans available",
                 buf_size, buf_num, frame_num, buf_bytes_copied, valid_spans_y, valid_spans_uv);
-            if(ctx.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME) {
+            if(ctx.cammodule_.camera_ppBuffer_out->nFlags & OMX_BUFFERFLAG_ENDOFFRAME) {
                 // Dump the complete I420 frame
                 say("Captured frame %d, %d packed bytes read, %d bytes unpacked, writing %d unpacked frame bytes",
                     frame_num, buf_bytes_read, frame_bytes, frame_info.size);
@@ -527,8 +360,8 @@ int main(int argc, char **argv) {
         // Buffer flushed, request a new buffer to be filled by the camera component
         if(need_next_buffer_to_be_filled) {
             need_next_buffer_to_be_filled = 0;
-            ctx.camera_output_buffer_available = 0;
-            if((r = OMX_FillThisBuffer(ctx.camera, ctx.camera_ppBuffer_out)) != OMX_ErrorNone) {
+            ctx.cammodule_.camera_output_buffer_available = 0;
+            if((r = OMX_FillThisBuffer(ctx.cammodule_.camera, ctx.cammodule_.camera_ppBuffer_out)) != OMX_ErrorNone) {
                 omx_die(r, "Failed to request filling of the output buffer on camera video output port 71");
             }
         }
@@ -546,25 +379,25 @@ int main(int argc, char **argv) {
     OMX_INIT_STRUCTURE(capture);
     capture.nPortIndex = 71;
     capture.bEnabled = OMX_FALSE;
-    if((r = OMX_SetParameter(ctx.camera, OMX_IndexConfigPortCapturing, &capture)) != OMX_ErrorNone) {
+    if((r = OMX_SetParameter(ctx.cammodule_.camera, OMX_IndexConfigPortCapturing, &capture)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch off capture on camera video output port 71");
     }
 
     // Return the last full buffer back to the camera component
-    if((r = OMX_FillThisBuffer(ctx.camera, ctx.camera_ppBuffer_out)) != OMX_ErrorNone) {
+    if((r = OMX_FillThisBuffer(ctx.cammodule_.camera, ctx.cammodule_.camera_ppBuffer_out)) != OMX_ErrorNone) {
         omx_die(r, "Failed to request filling of the output buffer on camera video output port 71");
     }
 
     // Flush the buffers on each component
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandFlush, 73, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandFlush, 73, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to flush buffers of camera input port 73");
     }
     block_until_flushed(&ctx.sync_);
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandFlush, 70, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandFlush, 70, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to flush buffers of camera preview output port 70");
     }
     block_until_flushed(&ctx.sync_);
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandFlush, 71, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandFlush, 71, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to flush buffers of camera video output port 71");
     }
     block_until_flushed(&ctx.sync_);
@@ -574,51 +407,51 @@ int main(int argc, char **argv) {
     block_until_flushed(&ctx.sync_);
 
     // Disable all the ports
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandPortDisable, 73, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandPortDisable, 73, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to disable camera input port 73");
     }
-    block_until_port_changed(ctx.camera, 73, OMX_FALSE);
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandPortDisable, 70, NULL)) != OMX_ErrorNone) {
+    block_until_port_changed(ctx.cammodule_.camera, 73, OMX_FALSE);
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandPortDisable, 70, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to disable camera preview output port 70");
     }
-    block_until_port_changed(ctx.camera, 70, OMX_FALSE);
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandPortDisable, 71, NULL)) != OMX_ErrorNone) {
+    block_until_port_changed(ctx.cammodule_.camera, 70, OMX_FALSE);
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandPortDisable, 71, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to disable camera video output port 71");
     }
-    block_until_port_changed(ctx.camera, 71, OMX_FALSE);
+    block_until_port_changed(ctx.cammodule_.camera, 71, OMX_FALSE);
     if((r = OMX_SendCommand(ctx.null_sink, OMX_CommandPortDisable, 240, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to disable null sink input port 240");
     }
     block_until_port_changed(ctx.null_sink, 240, OMX_FALSE);
 
     // Free all the buffers
-    if((r = OMX_FreeBuffer(ctx.camera, 73, ctx.camera_ppBuffer_in)) != OMX_ErrorNone) {
+    if((r = OMX_FreeBuffer(ctx.cammodule_.camera, 73, ctx.cammodule_.camera_ppBuffer_in)) != OMX_ErrorNone) {
         omx_die(r, "Failed to free buffer for camera input port 73");
     }
-    if((r = OMX_FreeBuffer(ctx.camera, 71, ctx.camera_ppBuffer_out)) != OMX_ErrorNone) {
+    if((r = OMX_FreeBuffer(ctx.cammodule_.camera, 71, ctx.cammodule_.camera_ppBuffer_out)) != OMX_ErrorNone) {
         omx_die(r, "Failed to free buffer for camera video output port 71");
     }
 
     // Transition all the components to idle and then to loaded states
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandStateSet, OMX_StateIdle, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandStateSet, OMX_StateIdle, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the camera component to idle");
     }
-    block_until_state_changed(ctx.camera, OMX_StateIdle);
+    block_until_state_changed(ctx.cammodule_.camera, OMX_StateIdle);
     if((r = OMX_SendCommand(ctx.null_sink, OMX_CommandStateSet, OMX_StateIdle, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the null sink component to idle");
     }
     block_until_state_changed(ctx.null_sink, OMX_StateIdle);
-    if((r = OMX_SendCommand(ctx.camera, OMX_CommandStateSet, OMX_StateLoaded, NULL)) != OMX_ErrorNone) {
+    if((r = OMX_SendCommand(ctx.cammodule_.camera, OMX_CommandStateSet, OMX_StateLoaded, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the camera component to loaded");
     }
-    block_until_state_changed(ctx.camera, OMX_StateLoaded);
+    block_until_state_changed(ctx.cammodule_.camera, OMX_StateLoaded);
     if((r = OMX_SendCommand(ctx.null_sink, OMX_CommandStateSet, OMX_StateLoaded, NULL)) != OMX_ErrorNone) {
         omx_die(r, "Failed to switch state of the null sink component to loaded");
     }
     block_until_state_changed(ctx.null_sink, OMX_StateLoaded);
 
     // Free the component handles
-    if((r = OMX_FreeHandle(ctx.camera)) != OMX_ErrorNone) {
+    if((r = OMX_FreeHandle(ctx.cammodule_.camera)) != OMX_ErrorNone) {
         omx_die(r, "Failed to free camera component handle");
     }
     if((r = OMX_FreeHandle(ctx.null_sink)) != OMX_ErrorNone) {

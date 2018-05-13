@@ -15,4 +15,5 @@ typedef struct
     int encoder_output_buffer_available;
 } OmxEncoderModule;
 
-extern void config_omx_encoder(OmxEncoderModule *encodermodule, OMX_U32 width, OMX_U32 height, OMX_U32 framerate, OMX_U32 stride, OMX_U32 bitrate);
+extern void config_omx_encoder_out(OmxEncoderModule *encodermodule, OMX_U32 width, OMX_U32 height, OMX_U32 framerate, OMX_U32 stride, OMX_U32 bitrate);
+extern void config_omx_encoder_in_out(OmxEncoderModule *mod, OMX_U32 width, OMX_U32 height, OMX_U32 framerate, OMX_U32 encbitrate);

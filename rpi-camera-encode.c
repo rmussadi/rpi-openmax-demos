@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     
     say("Configuring encoder...");
     OMX_U32 stride = VIDEO_WIDTH;
-    config_omx_encoder(&ctx.encodermodule_, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FRAMERATE, stride, VIDEO_BITRATE);
+    config_omx_encoder_out(&ctx.encodermodule_, VIDEO_WIDTH, VIDEO_HEIGHT, VIDEO_FRAMERATE, stride, VIDEO_BITRATE);
 
     say("Configuring null sink...");
 
