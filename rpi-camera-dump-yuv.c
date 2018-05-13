@@ -42,13 +42,31 @@ static int want_quit = 0;
 typedef struct
 {
     appctx_sync sync_ ;
+
+    // camera module
     OMX_HANDLETYPE camera;
     OMX_BUFFERHEADERTYPE *camera_ppBuffer_in;
     OMX_BUFFERHEADERTYPE *camera_ppBuffer_out;
     int camera_ready;
     int camera_output_buffer_available;
+
+    // display module
+    //OMX_HANDLETYPE render;
+
+    // encoder module
+    //OMX_HANDLETYPE encoder;
+    //OMX_BUFFERHEADERTYPE *encoder_ppBuffer_in;
+    //OMX_BUFFERHEADERTYPE *encoder_ppBuffer_out;
+    //int encoder_input_buffer_needed;
+    //int encoder_output_buffer_available;
+
+    // null_sink module
     OMX_HANDLETYPE null_sink;
+
+    // stdin/out
+    //FILE *fd_in;
     FILE *fd_out;
+
 } appctx;
 
 // Global signal handler for trapping SIGINT, SIGTERM, and SIGQUIT
